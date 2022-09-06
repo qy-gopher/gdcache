@@ -21,7 +21,7 @@ func NewHTTPPool(self string) *HTTPPool {
 	}
 }
 
-func (p *HTTPPool) Log(format string, v ...interface{}) {
+func (p *HTTPPool) Log(format string, v ...any) {
 	log.Printf("[Server %s] %s", p.self, fmt.Sprintf(format, v...))
 }
 
