@@ -16,5 +16,7 @@ echo ">>> start test"
 curl "http://localhost:9090/api?key=Jack" &
 curl "http://localhost:9090/api?key=Jack" &
 curl "http://localhost:9090/api?key=Jack" &
+sleep 1
+curl "http://localhost:9090/api?key=Jack" &
 
 wait

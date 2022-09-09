@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"sync"
+
+	"github.com/qy-gopher/gdcache/singleflight"
 )
 
 var (
@@ -16,6 +18,8 @@ type Group struct {
 	getter    Getter // 缓存未命中时获取源数据的回调
 	mainCache cache
 	peers     PeerPicker
+
+	loader *singleflight.Group // 确保相同的key只从源加载一次
 }
 
 func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
@@ -29,6 +33,7 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 		name:      name,
 		getter:    getter,
 		mainCache: cache{cacheBytes: cacheBytes},
+		loader:    &singleflight.Group{},
 	}
 	groups[name] = g
 
@@ -59,18 +64,27 @@ func (g *Group) Get(key string) (ByteView, error) {
 
 // load method 缓存不存在时从源加载数据
 func (g *Group) load(key string) (ByteView, error) {
-	if g.peers != nil {
-		if peer, ok := g.peers.PickPeer(key); ok {
-			value, err := g.getFormPeer(peer, key)
-			if err == nil {
-				return value, nil
-			}
+	view, err := g.loader.Do(key, func() (any, error) {
+		if g.peers != nil {
+			if peer, ok := g.peers.PickPeer(key); ok {
+				if value, err := g.getFormPeer(peer, key); err == nil {
+					return value, err
 
-			log.Println("[GdCache] Failed to get from peer:", err)
+				} else {
+					log.Println("[GeeCache] Failed to get from peer: ", err)
+				}
+
+			}
 		}
+
+		return g.getLocally(key)
+	})
+
+	if err != nil {
+		return ByteView{}, err
 	}
 
-	return g.getLocally(key)
+	return view.(ByteView), err
 }
 
 func (g *Group) getFormPeer(peer PeerGetter, key string) (ByteView, error) {
