@@ -9,7 +9,10 @@ import (
 	"strings"
 	"sync"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/qy-gopher/gdcache/consistenthash"
+	"github.com/qy-gopher/gdcache/pb"
 )
 
 const (
@@ -63,8 +66,13 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	body, err := proto.Marshal(&pb.Response{Value: view.ByteSlice()})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(view.ByteSlice())
+	w.Write(body)
 }
 
 func (p *HTTPPool) Set(peers ...string) {
@@ -99,26 +107,30 @@ type httpGetter struct {
 	baseURL string // 远程节点的地址
 }
 
-func (h *httpGetter) Get(group string, key string) ([]byte, error) {
+func (h *httpGetter) Get(in *pb.Request, out *pb.Response) error {
 	// 确定定位缓存的URL
-	url := fmt.Sprintf("%v%v/%v", h.baseURL, url.QueryEscape(group), url.QueryEscape(key))
+	url := fmt.Sprintf("%v%v/%v", h.baseURL, url.QueryEscape(in.Group), url.QueryEscape(in.Key))
 
 	res, err := http.Get(url)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("server returned: %v", res.StatusCode)
+		return fmt.Errorf("server returned: %v", res.StatusCode)
 	}
 
 	bytes, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading response body: %v", err)
+		return fmt.Errorf("reading response body: %v", err)
 	}
 
-	return bytes, nil
+	if err := proto.Unmarshal(bytes, out); err != nil {
+		return fmt.Errorf("decoding reponse body: %v", err)
+	}
+
+	return nil
 }
 
 // 验证httpGetter是否实现了PeerGetter接口

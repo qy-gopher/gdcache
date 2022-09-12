@@ -5,6 +5,7 @@ import (
 	"log"
 	"sync"
 
+	"github.com/qy-gopher/gdcache/pb"
 	"github.com/qy-gopher/gdcache/singleflight"
 )
 
@@ -88,12 +89,18 @@ func (g *Group) load(key string) (ByteView, error) {
 }
 
 func (g *Group) getFormPeer(peer PeerGetter, key string) (ByteView, error) {
-	bytes, err := peer.Get(g.name, key)
+	req := &pb.Request{
+		Group: g.name,
+		Key:   key,
+	}
+	res := &pb.Response{}
+
+	err := peer.Get(req, res)
 	if err != nil {
 		return ByteView{}, err
 	}
 
-	return ByteView{b: bytes}, nil
+	return ByteView{b: res.GetValue()}, nil
 }
 
 // getLocally method 从本机节点加载数据
